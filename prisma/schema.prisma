@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Course {
+  id               String         @id @default(cuid())
+  name             String
+  color            String         @default("#3B82F6")
+  examDate         DateTime?
+  studyDaysPlanned Int?
+  createdAt        DateTime       @default(now())
+  lectures         Lecture[]
+  flashcards       Flashcard[]
+  quizQuestions    QuizQuestion[]
+  studyPlan        StudyPlan?
+}
+
+model Lecture {
+  id            String         @id @default(cuid())
+  courseId       String
+  course         Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title          String
+  date           DateTime       @default(now())
+  rawText        String
+  contentBlocks  Json           @default("[]")
+  createdAt      DateTime       @default(now())
+  flashcards     Flashcard[]
+  quizQuestions  QuizQuestion[]
+}
+
+model Flashcard {
+  id         String   @id @default(cuid())
+  lectureId  String
+  lecture    Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  front      String
+  back       String
+  lastResult String?
+  createdAt  DateTime @default(now())
+}
+
+model QuizQuestion {
+  id            String   @id @default(cuid())
+  lectureId     String
+  lecture       Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  courseId       String
+  course         Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  type           String
+  question       String
+  options        Json?
+  correctAnswer  String
+  createdAt      DateTime @default(now())
+}
+
+model StudyPlan {
+  id               String   @id @default(cuid())
+  courseId          String   @unique
+  course            Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  examDate          DateTime
+  studyDays         Int
+  dailyAssignments  Json     @default("[]")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
