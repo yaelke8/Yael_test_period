@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload, FileText, X } from "lucide-react";
 
 interface Course {
   id: string;
@@ -10,9 +10,25 @@ interface Course {
   color: string;
 }
 
+const ACCEPTED_TYPES = ".pdf,.docx,.doc,.pptx,.ppt,.txt";
+const FILE_TYPE_LABELS: Record<string, string> = {
+  pdf: "PDF",
+  docx: "Word",
+  doc: "Word",
+  pptx: "PowerPoint",
+  ppt: "PowerPoint",
+  txt: "טקסט",
+};
+
 export default function NewLecturePage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" /></div>}>
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-20">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+        </div>
+      }
+    >
       <NewLectureContent />
     </Suspense>
   );
@@ -22,6 +38,7 @@ function NewLectureContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedCourseId = searchParams.get("courseId") || "";
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [courseId, setCourseId] = useState(preselectedCourseId);
@@ -29,7 +46,10 @@ function NewLectureContent() {
   const [rawText, setRawText] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [generating, setGenerating] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState("");
   const [error, setError] = useState("");
+  const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
     fetch("/api/courses")
@@ -39,6 +59,63 @@ function NewLectureContent() {
         if (!courseId && d.length > 0) setCourseId(d[0].id);
       });
   }, [courseId]);
+
+  async function handleFileUpload(file: File) {
+    setUploading(true);
+    setError("");
+
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    if (!Object.keys(FILE_TYPE_LABELS).includes(ext)) {
+      setError("פורמט קובץ לא נתמך. נתמכים: PDF, Word, PowerPoint, TXT");
+      setUploading(false);
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "שגיאה בעיבוד הקובץ");
+      }
+
+      const data = await res.json();
+      setRawText(data.text);
+      setUploadedFileName(data.fileName);
+
+      if (!title) {
+        const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+        setTitle(nameWithoutExt);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה בהעלאת הקובץ");
+    }
+    setUploading(false);
+  }
+
+  function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) handleFileUpload(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFileUpload(file);
+  }
+
+  function clearUploadedFile() {
+    setUploadedFileName("");
+    setRawText("");
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -92,7 +169,13 @@ function NewLectureContent() {
       const res = await fetch("/api/lectures", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courseId, title, rawText, date, contentBlocks: [] }),
+        body: JSON.stringify({
+          courseId,
+          title,
+          rawText,
+          date,
+          contentBlocks: [],
+        }),
       });
       if (!res.ok) throw new Error("שגיאה בשמירה");
       const lecture = await res.json();
@@ -150,16 +233,89 @@ function NewLectureContent() {
           </div>
         </div>
 
+        {/* File Upload Area */}
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">
-            טקסט ההרצאה (הדבקה)
+            העלאת קובץ
+          </label>
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            className={`relative rounded-xl border-2 border-dashed p-6 text-center transition-colors ${
+              dragOver
+                ? "border-blue-500 bg-blue-50"
+                : "border-gray-300 bg-gray-50 hover:border-gray-400"
+            }`}
+          >
+            {uploading ? (
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 size={32} className="animate-spin text-blue-500" />
+                <p className="text-sm text-gray-600">מעבד את הקובץ...</p>
+              </div>
+            ) : uploadedFileName ? (
+              <div className="flex items-center justify-center gap-3">
+                <FileText size={24} className="text-green-500" />
+                <span className="text-sm font-medium text-gray-700">
+                  {uploadedFileName}
+                </span>
+                <button
+                  type="button"
+                  onClick={clearUploadedFile}
+                  className="rounded-full p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <Upload size={32} className="text-gray-400" />
+                <p className="text-sm text-gray-600">
+                  גררי קובץ לכאן, או{" "}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="font-semibold text-blue-600 hover:text-blue-700"
+                  >
+                    בחרי קובץ
+                  </button>
+                </p>
+                <p className="text-xs text-gray-400">
+                  PDF, Word, PowerPoint, TXT
+                </p>
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPTED_TYPES}
+              onChange={handleFileInputChange}
+              className="hidden"
+            />
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-gray-200" />
+          <span className="text-xs text-gray-400">או הדביקי טקסט ידנית</span>
+          <div className="h-px flex-1 bg-gray-200" />
+        </div>
+
+        {/* Raw Text */}
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            טקסט ההרצאה
           </label>
           <textarea
             value={rawText}
             onChange={(e) => setRawText(e.target.value)}
             required
             rows={12}
-            placeholder="הדביקי כאן את טקסט ההרצאה..."
+            placeholder="הדביקי כאן את טקסט ההרצאה, או העלי קובץ למעלה..."
             className="w-full rounded-lg border px-3 py-3 text-right leading-relaxed focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
           />
         </div>
@@ -173,7 +329,7 @@ function NewLectureContent() {
         <div className="flex gap-3">
           <button
             type="submit"
-            disabled={generating || !courseId}
+            disabled={generating || !courseId || uploading}
             className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
           >
             {generating && <Loader2 size={18} className="animate-spin" />}
@@ -182,7 +338,7 @@ function NewLectureContent() {
           <button
             type="button"
             onClick={handleSaveWithoutAI}
-            disabled={generating || !courseId || !title.trim()}
+            disabled={generating || !courseId || !title.trim() || uploading}
             className="rounded-lg border px-6 py-2.5 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
           >
             שמירה ללא AI
