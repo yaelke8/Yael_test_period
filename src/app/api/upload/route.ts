@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseOffice, generate } from "officeparser";
-
-const EXT_TO_FILE_TYPE: Record<string, string> = {
-  pdf: "pdf",
-  docx: "docx",
-  pptx: "pptx",
-};
+import { fileToMarkdown } from "@/lib/fileToMarkdown";
 
 const SUPPORTED_EXTENSIONS = ["pdf", "docx", "doc", "pptx", "ppt", "txt"];
 
@@ -34,11 +28,7 @@ export async function POST(request: NextRequest) {
     if (ext === "txt") {
       text = buffer.toString("utf-8");
     } else {
-      const fileType = EXT_TO_FILE_TYPE[ext] || (ext === "doc" ? "docx" : ext === "ppt" ? "pptx" : "pdf");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ast = await parseOffice(buffer, { fileType: fileType as any });
-      const result = await generate(ast, "text");
-      text = result.value;
+      text = await fileToMarkdown(buffer, file.name);
     }
 
     text = text.trim();
