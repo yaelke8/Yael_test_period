@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const apiKey = process.env.ANTHROPIC_API_KEY || "";
+const isOpenRouter = apiKey.startsWith("sk-or-");
+const anthropic = new Anthropic({
+  apiKey,
+  ...(isOpenRouter && { baseURL: "https://openrouter.ai/api" }),
+});
 
 interface MaterialInput {
   fileName: string;
@@ -138,8 +143,8 @@ ${lectureSummary || "אין הרצאות עדיין"}`;
     }
 
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 8000,
+      model: isOpenRouter ? "anthropic/claude-sonnet-4" : "claude-sonnet-4-20250514",
+      max_tokens: 2500,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
     });

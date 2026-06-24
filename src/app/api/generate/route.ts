@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const apiKey = process.env.ANTHROPIC_API_KEY || "";
+const isOpenRouter = apiKey.startsWith("sk-or-");
+const anthropic = new Anthropic({
+  apiKey,
+  ...(isOpenRouter && { baseURL: "https://openrouter.ai/api" }),
+});
 
 const SYSTEM_PROMPT = `אתה עוזר לימודי שמייצר סיכומי הרצאות בפורמט JSON מובנה.
 עליך להחזיר JSON בלבד (ללא markdown, ללא בלוקים של קוד), בפורמט הבא:
@@ -57,8 +62,8 @@ export async function POST(request: NextRequest) {
     }
 
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 8000,
+      model: isOpenRouter ? "anthropic/claude-sonnet-4" : "claude-sonnet-4-20250514",
+      max_tokens: 2500,
       system: SYSTEM_PROMPT,
       messages: [
         {
@@ -85,6 +90,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(parsed);
   } catch (error) {
     console.error("AI generation error:", error);
+    const msg = error instanceof Error ? error.message : "";
+    if (msg.includes("402") || msg.includes("credits")) {
+      return NextResponse.json(
+        { error: "אין מספיק קרדיטים בחשבון ה-AI. יש להוסיף קרדיטים ב-OpenRouter או להחליף למפתח Anthropic ישיר." },
+        { status: 402 }
+      );
+    }
     return NextResponse.json(
       { error: "שגיאה ביצירת הסיכום" },
       { status: 500 }
